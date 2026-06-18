@@ -1,19 +1,19 @@
-# Azure Container Apps CI/CD Guide for `sampleappdev`
+# Azure Container Apps CI/CD Guide
 
 ## Purpose
 
-This guide explains how to build a Python application, commit it to Git, push it to GitHub, build and push a container image to Azure Container Registry, and deploy it to Azure Container Apps with GitHub Actions. It is written so a new DevOps engineer can follow both Azure Portal and Azure CLI paths end to end. [web:114][web:279][web:397]
+This guide explains how to build a Python application, commit it to Git, push it to GitHub, build and push a container image to Azure Container Registry, and deploy it to Azure Container Apps with GitHub Actions.
 
 ## Solution flow
 
-1. Developer writes Python code locally.
+1. Developer writes code locally.
 2. Developer initializes Git and pushes code to GitHub.
 3. GitHub Actions starts on push to `main`.
 4. Workflow logs in to Azure using `AZURE_CREDENTIALS`.
 5. Azure builds the container image in ACR.
 6. Azure Container Apps updates to the new image.
-7. The Container Apps environment identity pulls the private image with `AcrPull`. [web:114][web:279][web:397][web:428]
-
+7. The Container Apps environment identity pulls the private image with `AcrPull`.
+   
 ### Architecture diagram
 
 ```mermaid
@@ -29,6 +29,18 @@ flowchart LR
   ACA --> ENV[Container Apps Environment]
   ENV --> LAW[Log Analytics Workspace]
 ```
+
+## Required resources
+
+You need these Azure resources:
+
+- Resource group: `RG-SAMPLE-DEV`.
+- Azure Container Registry: `sampledevacr`.
+- Container Apps environment: `sampleapp-env`.
+- Container App: `sampleappdev`.
+- Container name in the app: `sampleappcontainer`.
+
+---
 
 ### CI/CD diagram
 
@@ -54,21 +66,9 @@ sequenceDiagram
 
 ---
 
-## Required resources
-
-You need these Azure resources:
-
-- Resource group: `RG-SAMPLE-DEV`.
-- Azure Container Registry: `sampledevacr`.
-- Container Apps environment: `sampleapp-env`.
-- Container App: `sampleappdev`.
-- Container name in the app: `sampleappcontainer`. [web:397][web:428]
-
----
-
 ## Python app setup
 
-Your app should listen on port `8080`, because the deployment expects that port for ingress. [web:114]
+Your app should listen on port `8080`, because the deployment expects that port for ingress.
 
 ### Example structure
 
@@ -132,7 +132,7 @@ CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
 5. Enter `RG-SAMPLE-DEV`.
 6. Choose a region.
 7. Click **Review + create**.
-8. Click **Create**. [web:279][web:397]
+8. Click **Create**.
 
 ### CLI alternative
 
@@ -153,7 +153,7 @@ az group create \
 5. Pick a region.
 6. Choose **Standard** SKU.
 7. Leave **Admin user** disabled.
-8. Click **Review + create** and then **Create**. [web:428][web:397]
+8. Click **Review + create** and then **Create**.
 
 ### CLI alternative
 
@@ -175,7 +175,7 @@ az acr create \
 5. Name it `sampleapp-env`.
 6. Choose region.
 7. Create or select a **Log Analytics workspace**.
-8. Click **Create** and wait. [web:397][web:405][web:464]
+8. Click **Create** and wait.
 
 ### CLI alternative
 
@@ -196,7 +196,7 @@ az containerapp env create \
 4. Name the app `sampleappdev`.
 5. Set ingress as needed.
 6. Set target port to `8080`.
-7. Create the app. [web:114][web:397]
+7. Create the app. 
 
 ### CLI alternative
 
@@ -220,13 +220,13 @@ az containerapp create \
 2. Go to **App registrations**.
 3. Click **New registration**.
 4. Name it `sampleappdev-github-actions`.
-5. Click **Register**. [web:279]
+5. Click **Register**.
 
 ### Get IDs
 
 On the app Overview page:
 - Copy **Application (client) ID**.
-- Copy **Directory (tenant) ID**. [web:279]
+- Copy **Directory (tenant) ID**.
 
 From Azure CLI:
 
@@ -243,7 +243,7 @@ az account show --query id -o tsv
 3. Under **Client secrets**, click **New client secret**.
 4. Add description `github-actions-secret`.
 5. Click **Add**.
-6. Copy the **Value** immediately. [web:279]
+6. Copy the **Value** immediately.
 
 ### CLI alternative
 
@@ -277,14 +277,14 @@ az ad sp create-for-rbac \
 }
 ```
 
-8. Save the secret. [web:279]
+8. Save the secret.
 
 ### What each field means
 
 - `clientId`: App registration Application ID.
 - `clientSecret`: Secret value from Entra ID.
 - `subscriptionId`: Azure subscription GUID.
-- `tenantId`: Tenant GUID. [web:279]
+- `tenantId`: Tenant GUID.
 
 ---
 
@@ -292,7 +292,7 @@ az ad sp create-for-rbac \
 
 ### Why not AcrPush?
 
-For this pipeline, `AcrPush` is not required for runtime deployment. The workflow builds and pushes the image through `az acr build`, while the deployed Container App only needs to **pull** the image. The important role for the Container Apps environment is `AcrPull`. [web:428][web:397]
+For this pipeline, `AcrPush` is not required for runtime deployment. The workflow builds and pushes the image through `az acr build`, while the deployed Container App only needs to **pull** the image. The important role for the Container Apps environment is `AcrPull`.
 
 ### Portal steps to assign AcrPull
 
@@ -303,7 +303,7 @@ For this pipeline, `AcrPush` is not required for runtime deployment. The workflo
 5. Click **Next**.
 6. Under **Members**, choose **Managed identity**.
 7. Select the Container Apps environment identity for `sampleapp-env`.
-8. Click **Review + assign**. [web:387][web:397][web:428]
+8. Click **Review + assign**.
 
 ### CLI alternative
 
@@ -432,14 +432,14 @@ git push -u origin feature/change-1
    - Checkout code.
    - Azure Login.
    - ACR build.
-   - Container App update. [web:114][web:464][web:467]
+   - Container App update.
 
 ### What success looks like
 
 - Azure login succeeds.
 - Image builds and pushes into ACR.
 - Container App update succeeds.
-- A new revision becomes active. [web:114][web:397]
+- A new revision becomes active.
 
 ### If deployment fails
 
@@ -447,7 +447,7 @@ Use the logs to identify whether the failure is:
 - Login/authentication.
 - ACR build/push.
 - Container App revision update.
-- Image pull authorization. [file:461][file:462][file:463]
+- Image pull authorization.
 
 ---
 
@@ -461,7 +461,7 @@ Validation should confirm both that the app is live and that it returns the expe
 2. Open `sampleappdev`.
 3. Copy the app URL.
 4. Open the URL in your browser.
-5. Confirm the app returns the expected response, for example JSON from `/`. [web:397][web:464]
+5. Confirm the app returns the expected response, for example JSON from `/`.
 
 ### CLI validation
 
@@ -485,7 +485,7 @@ curl https://<fqdn>/health
 
 - HTTP response is 200.
 - Response body matches the deployed version.
-- The latest Git SHA or build version is visible if your app reports it. [web:464][web:467]
+- The latest Git SHA or build version is visible if your app reports it.
 
 ---
 
@@ -497,7 +497,7 @@ curl https://<fqdn>/health
 2. Go to **Revisions and replicas**.
 3. Confirm the newest revision is active.
 4. Go to **Log stream** to see live logs.
-5. Go to **Metrics** to inspect request count, CPU, memory, and failures. [web:464][web:467][web:473]
+5. Go to **Metrics** to inspect request count, CPU, memory, and failures.
 
 ### CLI monitoring
 
@@ -508,26 +508,26 @@ az containerapp revision list -n sampleappdev -g RG-SAMPLE-DEV -o table
 
 ### Log Analytics
 
-Azure Container Apps sends application and system logs to Log Analytics. Use the workspace linked to the environment to query system and console logs, especially when diagnosing failed revisions. [web:464][web:465][web:467]
+Azure Container Apps sends application and system logs to Log Analytics. Use the workspace linked to the environment to query system and console logs, especially when diagnosing failed revisions.
 
 ---
 
 ## Troubleshooting lessons
 
 ### Unauthorized image push
-Earlier failures showed the image push step could fail with insufficient scopes. That was a build/push identity issue, not a runtime `AcrPush` requirement for the app itself. [file:461][file:462]
+Earlier failures showed the image push step could fail with insufficient scopes. That was a build/push identity issue, not a runtime `AcrPush` requirement for the app itself.
 
 ### Image pull failure
-The common runtime problem was missing `AcrPull` on the Container Apps environment identity. [web:397][web:428]
+The common runtime problem was missing `AcrPull` on the Container Apps environment identity.
 
 ### Secret problems
-A wrong or missing `AZURE_CREDENTIALS` secret prevents Azure login. [web:279]
+A wrong or missing `AZURE_CREDENTIALS` secret prevents Azure login.
 
 ### Revision failures
-If a revision fails, check revision details, system logs, and log stream to find the failing container message. [web:464][web:469][web:475]
+If a revision fails, check revision details, system logs, and log stream to find the failing container message. 
 
 ### RBAC propagation
-After role assignment, wait a few minutes before retrying because Azure RBAC may not be immediate. [web:428]
+After role assignment, wait a few minutes before retrying because Azure RBAC may not be immediate.
 
 ---
 
@@ -546,6 +546,6 @@ After role assignment, wait a few minutes before retrying because Azure RBAC may
 - Workflow file committed.
 - GitHub Actions run succeeds.
 - Deployed app URL returns expected response.
-- Logs and revisions are monitored after deployment. [web:279][web:397][web:428][web:464]
+- Logs and revisions are monitored after deployment.
 
 This version removes the earlier business name entirely and replaces it with a dummy project reference throughout.
