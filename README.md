@@ -2,8 +2,6 @@
 
 This guide explains how to build a Python application, push it to GitHub, build and push a container image to Azure Container Registry, and deploy it to Azure Container Apps using GitHub Actions.
 
-It is intentionally written to match the deployment approach already working in this setup: **GitHub repository secret `AZURE_CREDENTIALS`**, **Azure Login with `creds`**, **ACR build**, and **Container App update**.
-
 ---
 
 ## Table of Contents
@@ -29,15 +27,9 @@ It is intentionally written to match the deployment approach already working in 
 - [Troubleshooting Lessons](#troubleshooting-lessons)
 - [Final Checklist](#final-checklist)
 
----
-
 ## Purpose
 
 This guide explains how to deploy a Python application to Azure Container Apps through GitHub Actions using Azure Container Registry as the image source.
-
-It covers local app setup, Azure resource creation, GitHub repository configuration, workflow execution, validation, and monitoring in one end-to-end procedure.
-
----
 
 ## Solution Flow
 
@@ -274,7 +266,7 @@ az ad sp create-for-rbac   --name sampleappdev-github-actions   --role Contribut
 - `subscriptionId`: Azure subscription GUID
 - `tenantId`: Tenant GUID
 
-### Create workflow file in GitHub
+### Create workflow file in GitHub (optional if handled in the code)
 
 You can create the workflow file from your local repository or directly in GitHub.
 
