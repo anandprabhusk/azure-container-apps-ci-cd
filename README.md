@@ -1,49 +1,57 @@
 # Azure Container Apps CI/CD Guide
 
-Deploy a Python application to **Azure Container Apps** using **GitHub Actions**, **Azure Container Registry (ACR)**, and secure Azure authentication. This guide is written for public Git repositories and is structured for fast onboarding, repeatable deployment, and easier troubleshooting. [web:1][web:14]
+This guide explains how to build a Python application, push it to GitHub, build and push a container image to Azure Container Registry, and deploy it to Azure Container Apps using GitHub Actions.
+
+It is intentionally written to match the deployment approach already working in this setup: **GitHub repository secret `AZURE_CREDENTIALS`**, **Azure Login with `creds`**, **ACR build**, and **Container App update**.
 
 ---
 
 ## Table of Contents
 
-- [Overview](#overview)
+- [Purpose](#purpose)
+- [Solution Flow](#solution-flow)
 - [Architecture](#architecture)
-- [Deployment Flow](#deployment-flow)
-- [Prerequisites](#prerequisites)
-- [Project Structure](#project-structure)
-- [Sample Application](#sample-application)
-- [Azure Resources](#azure-resources)
-- [Identity and Access](#identity-and-access)
-- [GitHub Configuration](#github-configuration)
+- [Required Resources](#required-resources)
+- [Reference Sample App](#reference-sample-app)
+- [Azure Portal Configuration](#azure-portal-configuration)
+  - [Create the Resource Group](#1-create-the-resource-group)
+  - [Create Azure Container Registry](#2-create-azure-container-registry)
+  - [Create the Container Apps Environment](#3-create-the-container-apps-environment)
+  - [Create the Container App](#4-create-the-container-app)
+- [Microsoft Entra App and Secret](#microsoft-entra-app-and-secret)
+- [GitHub Frontend Configuration](#github-frontend-configuration)
+- [AcrPull Role Assignment](#acrpull-role-assignment)
 - [GitHub Actions Workflow](#github-actions-workflow)
 - [Deployment Procedure](#deployment-procedure)
-- [Validation](#validation)
-- [Monitoring](#monitoring)
-- [Troubleshooting](#troubleshooting)
-- [Security Notes](#security-notes)
-- [Checklist](#checklist)
+- [Monitoring Deployment](#monitoring-deployment)
+- [Validate the Deployed App](#validate-the-deployed-app)
+- [How the Deployer Monitors the App](#how-the-deployer-monitors-the-app)
+- [Troubleshooting Lessons](#troubleshooting-lessons)
+- [Final Checklist](#final-checklist)
 
 ---
 
-## Overview
+## Purpose
 
-This repository demonstrates a simple CI/CD pattern for deploying a Python web app to Azure Container Apps. On every push to the `main` branch, GitHub Actions authenticates to Azure, builds the container image in Azure Container Registry, and updates the Container App to a new revision. [web:1][web:14]
+This guide explains how to deploy a Python application to Azure Container Apps through GitHub Actions using Azure Container Registry as the image source.
 
-This design keeps the pipeline simple and production-friendly. The running application pulls the private image from ACR using managed identity permissions, which means you do not need to enable the ACR admin account for runtime access. [web:1][web:15]
+It covers local app setup, Azure resource creation, GitHub repository configuration, workflow execution, validation, and monitoring in one end-to-end procedure.
+
+---
+
+## Solution Flow
+
+1. Developer writes code locally.
+2. Developer initializes Git and pushes code to GitHub.
+3. GitHub Actions starts on push to `main`.
+4. Workflow logs in to Azure using `AZURE_CREDENTIALS`.
+5. Azure builds the container image in ACR.
+6. Azure Container Apps updates to the new image.
+7. The Container Apps environment identity pulls the private image with `AcrPull`.
 
 ---
 
 ## Architecture
-
-### Solution flow
-
-1. A developer writes code locally.
-2. The code is committed and pushed to GitHub.
-3. GitHub Actions starts on push to `main`.
-4. The workflow authenticates to Azure.
-5. Azure Container Registry builds and stores the image.
-6. Azure Container Apps updates the app to the new image.
-7. The deployed app pulls the private image from ACR using managed identity with `AcrPull`. [web:1][web:14][web:15]
 
 ### Architecture diagram
 
@@ -52,22 +60,16 @@ flowchart LR
   Dev[Developer Laptop] -->|git push| GH[GitHub Repository]
   GH -->|workflow trigger| GA[GitHub Actions]
 
-  GA -->|azure/login| AAD[Microsoft Entra ID]
+  GA -->|azure/login using secret| AAD[Microsoft Entra App]
   GA -->|az acr build| ACR[Azure Container Registry]
   GA -->|az containerapp update| ACA[Azure Container App]
 
-  ACA -->|pull private image| ACR
+  ACA -->|private image pull| ACR
   ACA --> ENV[Container Apps Environment]
   ENV --> LAW[Log Analytics Workspace]
 ```
 
----
-
-## Deployment Flow
-
-The deployment is event-driven and based on source control. A push to the main branch triggers the workflow, the image is built and tagged, and Azure Container Apps activates a new revision using the updated image. [web:1]
-
-### CI/CD sequence
+### CI/CD diagram
 
 ```mermaid
 sequenceDiagram
@@ -80,124 +82,85 @@ sequenceDiagram
 
   Dev->>Git: Push code to main
   Git->>GA: Start workflow
-  GA->>AAD: Authenticate to Azure
-  AAD-->>GA: Access token issued
+  GA->>AAD: Authenticate with AZURE_CREDENTIALS
+  AAD-->>GA: Token issued
   GA->>ACR: Build and push image
-  ACR-->>GA: Image stored
+  ACR-->>GA: Image stored with SHA tag
   GA->>ACA: Update app image
   ACA->>ACR: Pull image with managed identity
-  ACA-->>GA: New revision becomes active
+  ACA-->>GA: New revision active
 ```
 
 ---
 
-## Prerequisites
+## Required Resources
 
-Before using this repository, make sure the following are available:
+You need these Azure resources:
 
-- An Azure subscription.
-- A GitHub repository.
-- Azure CLI installed locally.
-- Git installed locally.
-- A Python application that listens on port `8080`.
-- Permission to create Azure resources and role assignments. [web:1]
-
-Recommended knowledge:
-
-- Basic Git workflow.
-- Basic Docker concepts.
-- Familiarity with Azure resource groups, ACR, and Container Apps.
+- Resource group: `RG-SAMPLE-DEV`
+- Azure Container Registry: `sampledevacr`
+- Container Apps environment: `sampleapp-env`
+- Container App: `sampleappdev`
+- Container name in the app: `sampleappcontainer`
 
 ---
 
-## Project Structure
+## Reference Sample App
 
-Use a clean and minimal structure like this:
+The sample application is intentionally kept **outside this README** so the documentation stays concise and easier to read in a public repository.
 
-```text
-sample-app/
-├── app.py
-├── requirements.txt
-├── Dockerfile
-├── .github/
-│   └── workflows/
-│       └── azure-container-apps.yml
-└── README.md
-```
+Reference files:
+- [Sample app overview](./reference/sample-app/README.md)
+- [Sample `app.py`](./reference/sample-app/app.py)
+- [Sample `requirements.txt`](./reference/sample-app/requirements.txt)
+- [Sample `Dockerfile`](./reference/sample-app/Dockerfile)
 
-This layout keeps the application, container definition, automation workflow, and documentation easy to discover.
+Important reference points from the sample app:
 
----
-
-## Sample Application
-
-Your application must listen on port `8080`, because the Container App ingress configuration is aligned to that port in this guide.
-
-### `app.py`
-
-```python
-from flask import Flask
-
-app = Flask(__name__)
-
-@app.get("/")
-def home():
-    return {"status": "ok", "service": "sampleappdev"}
-
-@app.get("/health")
-def health():
-    return {"status": "healthy"}
-```
-
-### `requirements.txt`
-
-```txt
-Flask==3.1.3
-gunicorn==23.0.0
-```
-
-### `Dockerfile`
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-EXPOSE 8080
-
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "app:app"]
-```
+- The application listens on port `8080`.
+- The container exposes port `8080`.
+- The entry point runs Gunicorn bound to `0.0.0.0:8080`.
+- The root endpoint returns a simple JSON response.
 
 ---
 
-## Azure Resources
+## Azure Portal Configuration
 
-Create or confirm the following Azure resources:
+This section keeps the frontend Azure Portal steps as part of the procedure so the deployment can be reproduced in the same way.
 
-| Resource | Example name |
-|---|---|
-| Resource Group | `RG-SAMPLE-DEV` |
-| Azure Container Registry | `sampledevacr` |
-| Container Apps Environment | `sampleapp-env` |
-| Container App | `sampleappdev` |
-| Container Name | `sampleappcontainer` |
+### 1) Create the resource group
 
-### Resource creation examples
+1. Open **Azure Portal**.
+2. Search **Resource groups**.
+3. Click **Create**.
+4. Select your subscription.
+5. Enter `RG-SAMPLE-DEV`.
+6. Choose a region.
+7. Click **Review + create**.
+8. Click **Create**.
 
-#### Resource group
+#### CLI alternative
 
 ```bash
 az group create \
   --name RG-SAMPLE-DEV \
-  --location "uaenorth"
+  --location uae north
 ```
 
-#### Azure Container Registry
+---
+
+### 2) Create Azure Container Registry
+
+1. Search **Container registries**.
+2. Click **Create**.
+3. Select subscription and resource group `RG-SAMPLE-DEV`.
+4. Enter registry name `sampledevacr`.
+5. Pick a region.
+6. Choose **Standard** SKU.
+7. Leave **Admin user** disabled.
+8. Click **Review + create** and then **Create**.
+
+#### CLI alternative
 
 ```bash
 az acr create \
@@ -206,16 +169,41 @@ az acr create \
   --sku Standard
 ```
 
-#### Container Apps environment
+---
+
+### 3) Create the Container Apps environment
+
+1. Search **Container Apps**.
+2. Click **Create**.
+3. Choose **Container Apps environment**.
+4. Select `RG-SAMPLE-DEV`.
+5. Name it `sampleapp-env`.
+6. Choose region.
+7. Create or select a **Log Analytics workspace**.
+8. Click **Create** and wait.
+
+#### CLI alternative
 
 ```bash
 az containerapp env create \
   --name sampleapp-env \
   --resource-group RG-SAMPLE-DEV \
-  --location "uaenorth"
+  --location uae north
 ```
 
-#### Container App
+---
+
+### 4) Create the Container App
+
+1. Open **Container Apps**.
+2. Click **Create** → **Container App**.
+3. Choose environment `sampleapp-env`.
+4. Name the app `sampleappdev`.
+5. Set ingress as needed.
+6. Set target port to `8080`.
+7. Create the app.
+
+#### CLI alternative
 
 ```bash
 az containerapp create \
@@ -229,89 +217,147 @@ az containerapp create \
 
 ---
 
-## Identity and Access
+## Microsoft Entra App and Secret
 
-Azure authentication is a core part of the deployment. GitHub Actions must be able to log in to Azure, and the running Container App must be able to pull private images from ACR. [web:1][web:14][web:15]
+### Create app registration in Portal
 
-### Option A: Recommended for public repositories
+1. Open **Microsoft Entra ID**.
+2. Go to **App registrations**.
+3. Click **New registration**.
+4. Name it `sampleappdev-github-actions`.
+5. Click **Register**.
 
-Use **OpenID Connect (OIDC)** with `azure/login` instead of storing a long-lived client secret in GitHub. GitHub documents that OIDC with Azure requires `id-token: write`, and Azure Login supports this model. [web:2][web:14]
+### Get IDs
 
-With this approach, you typically store only:
-- `AZURE_CLIENT_ID`
-- `AZURE_TENANT_ID`
-- `AZURE_SUBSCRIPTION_ID`
+On the app Overview page:
+- Copy **Application (client) ID**
+- Copy **Directory (tenant) ID**
 
-### Option B: Service principal secret
-
-You can also use a service principal and store `AZURE_CREDENTIALS` as JSON in GitHub Secrets. This works, but it is less preferred for public-facing repositories because it depends on a long-lived secret. [web:14]
-
-### Required ACR permission for runtime
-
-The deployed application must have `AcrPull` permission on the Azure Container Registry so it can pull the private image. Managed identity plus `AcrPull` is the standard pattern for this scenario. [web:15]
-
-#### Example role assignment
+From Azure CLI:
 
 ```bash
-APP_PRINCIPAL_ID=$(az containerapp show \
-  --name sampleappdev \
-  --resource-group RG-SAMPLE-DEV \
-  --query identity.principalId -o tsv)
+az ad app list --display-name sampleappdev-github-actions --query ".appId" -o tsv
+az account show --query tenantId -o tsv
+az account show --query id -o tsv
+```
 
-ACR_ID=$(az acr show \
-  --name sampledevacr \
-  --resource-group RG-SAMPLE-DEV \
-  --query id -o tsv)
+### Create client secret
+
+1. Open the app registration.
+2. Go to **Certificates & secrets**.
+3. Under **Client secrets**, click **New client secret**.
+4. Add description `github-actions-secret`.
+5. Click **Add**.
+6. Copy the **Value** immediately.
+
+### CLI alternative
+
+```bash
+az ad sp create-for-rbac \
+  --name sampleappdev-github-actions \
+  --role Contributor \
+  --scopes /subscriptions/<subscription-id>/resourceGroups/RG-SAMPLE-DEV
+```
+
+---
+
+## GitHub Frontend Configuration
+
+### Create GitHub secret
+
+1. Open your GitHub repository.
+2. Click **Settings**.
+3. Go to **Secrets and variables**.
+4. Choose **Actions**.
+5. Click **New repository secret**.
+6. Set name to `AZURE_CREDENTIALS`.
+7. Paste this JSON:
+
+```json
+{
+  "clientId": "YOUR_APPLICATION_CLIENT_ID",
+  "clientSecret": "YOUR_CLIENT_SECRET_VALUE",
+  "subscriptionId": "YOUR_SUBSCRIPTION_ID",
+  "tenantId": "YOUR_TENANT_ID"
+}
+```
+
+8. Save the secret.
+
+### What each field means
+
+- `clientId`: App registration Application ID
+- `clientSecret`: Secret value from Entra ID
+- `subscriptionId`: Azure subscription GUID
+- `tenantId`: Tenant GUID
+
+### Create workflow file in GitHub
+
+You can create the workflow file from your local repository or directly in GitHub.
+
+#### GitHub frontend steps
+
+1. Open the repository in GitHub.
+2. Go to the **Actions** tab, or open the `.github/workflows/` folder from the repository view.
+3. Create a new file named `azure-container-apps.yml`.
+4. Paste the workflow content from this guide.
+5. Commit the file to the `main` branch, or create it locally and push it through Git.
+
+---
+
+## AcrPull Role Assignment
+
+### Why not AcrPush?
+
+For this pipeline, `AcrPush` is not required for runtime deployment. The workflow builds and pushes the image through `az acr build`, while the deployed Container App only needs to **pull** the image. The important role for the Container Apps environment is `AcrPull`.
+
+### Portal steps to assign AcrPull
+
+1. Open **Azure Container Registry** `sampledevacr`.
+2. Go to **Access control (IAM)**.
+3. Click **Add** → **Add role assignment**.
+4. Select **AcrPull**.
+5. Click **Next**.
+6. Under **Members**, choose **Managed identity**.
+7. Select the Container Apps environment identity for `sampleapp-env`.
+8. Click **Review + assign**.
+
+### CLI alternative
+
+```bash
+ENV_PRINCIPAL_ID=$(az containerapp env show -n sampleapp-env -g RG-SAMPLE-DEV --query identity.principalId -o tsv)
+ACR_ID=$(az acr show -n sampledevacr --query id -o tsv)
 
 az role assignment create \
-  --assignee "$APP_PRINCIPAL_ID" \
+  --assignee "$ENV_PRINCIPAL_ID" \
   --scope "$ACR_ID" \
   --role AcrPull
 ```
 
-> Note: In some deployments, identity can be assigned at the app level or through the environment pattern you use. The important requirement is that the identity used for image pull has `AcrPull` on the target registry. [web:15]
+### Verify it
 
----
-
-## GitHub Configuration
-
-### Repository secrets
-
-If you use OIDC, create these repository secrets:
-
-- `AZURE_CLIENT_ID`
-- `AZURE_TENANT_ID`
-- `AZURE_SUBSCRIPTION_ID`
-
-If you use service principal JSON instead, create:
-
-- `AZURE_CREDENTIALS`
-
-### Workflow permissions
-
-Your GitHub Actions workflow should include:
-
-```yaml
-permissions:
-  contents: read
-  id-token: write
+```bash
+az role assignment list \
+  --assignee "$ENV_PRINCIPAL_ID" \
+  --scope "$ACR_ID" \
+  --role AcrPull \
+  -o table
 ```
-
-`id-token: write` is required for GitHub OIDC authentication to Azure. [web:2][web:14]
 
 ---
 
 ## GitHub Actions Workflow
 
-Below is a clean workflow using **OIDC**, which is the recommended model for public repositories and modern Azure deployments. GitHub and Azure both document this pattern for `azure/login`. [web:2][web:14]
-
 ```yaml
-name: Deploy to Azure Container Apps
+name: Trigger auto deployment for sampleappdev
 
 on:
   push:
     branches:
       - main
+    paths:
+      - '**'
+      - '.github/workflows/azure-container-apps.yml'
   workflow_dispatch:
 
 permissions:
@@ -326,51 +372,33 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Azure login
+      - name: Azure Login
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Build and push image to ACR
+      - name: Build and Push Image to ACR
         run: |
           az acr build \
             --registry sampledevacr \
             --image sampleappdev:${{ github.sha }} \
             .
 
-      - name: Enable managed identity on Container App
-        run: |
-          az containerapp identity assign \
-            --name sampleappdev \
-            --resource-group RG-SAMPLE-DEV \
-            --system-assigned
-
-      - name: Deploy image to Azure Container Apps
+      - name: Deploy to Azure Container App
         run: |
           az containerapp update \
             --name sampleappdev \
             --resource-group RG-SAMPLE-DEV \
-            --image sampledevacr.azurecr.io/sampleappdev:${{ github.sha }}
-```
-
-### If you must use `AZURE_CREDENTIALS`
-
-Use this login block instead:
-
-```yaml
-      - name: Azure login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+            --container-name sampleappcontainer \
+            --image sampledevacr.azurecr.io/sampleappdev:${{ github.sha }} \
+            --no-wait
 ```
 
 ---
 
 ## Deployment Procedure
 
-### 1. Initialize Git locally
+### 1) Initialize Git
 
 ```bash
 git init
@@ -379,7 +407,7 @@ git config --global user.email "you@example.com"
 git remote add origin https://github.com/<user-or-org>/<repo>.git
 ```
 
-### 2. Create the first commit
+### 2) First commit and push
 
 ```bash
 git add .
@@ -388,154 +416,154 @@ git branch -M main
 git push -u origin main
 ```
 
-### 3. Confirm the workflow starts
+### 3) Future changes from your computer
 
-Open the **Actions** tab in GitHub and verify the workflow is triggered after the push.
+For later edits:
 
-### 4. Confirm the image is built
+```bash
+git add .
+git commit -m "Update app logic"
+git push
+```
 
-Check that the image appears in Azure Container Registry with a tag that matches the Git commit SHA.
+If using a feature branch:
 
-### 5. Confirm the app is updated
-
-Verify that Azure Container Apps creates a new revision and marks it active. Azure documents GitHub Actions deployment support for Container Apps, and revision-based rollout is part of the service deployment model. [web:1]
+```bash
+git checkout -b feature/change-1
+git add .
+git commit -m "Update feature"
+git push -u origin feature/change-1
+```
 
 ---
 
-## Validation
+## Monitoring Deployment
 
-Validation should check both availability and correctness.
+### In GitHub Actions
 
-### Get the app FQDN
+1. Open repository **Actions**.
+2. Click the latest workflow run.
+3. Watch the logs for:
+   - Checkout code
+   - Azure Login
+   - ACR build
+   - Container App update
+
+### What success looks like
+
+- Azure login succeeds
+- Image builds and pushes into ACR
+- Container App update succeeds
+- A new revision becomes active
+
+### If deployment fails
+
+Use the logs to identify whether the failure is:
+- Login or authentication
+- ACR build or push
+- Container App revision update
+- Image pull authorization
+
+---
+
+## Validate the Deployed App
+
+Validation should confirm both that the app is live and that it returns the expected response.
+
+### Portal validation
+
+1. Open **Container Apps**.
+2. Open `sampleappdev`.
+3. Copy the app URL.
+4. Open the URL in your browser.
+5. Confirm the app returns the expected response, for example JSON from `/`.
+
+### CLI validation
 
 ```bash
-az containerapp show \
-  --name sampleappdev \
-  --resource-group RG-SAMPLE-DEV \
-  --query properties.configuration.ingress.fqdn -o tsv
+az containerapp show -n sampleappdev -g RG-SAMPLE-DEV --query properties.configuration.ingress.fqdn -o tsv
 ```
 
-### Test the root endpoint
+Then test it:
 
 ```bash
 curl https://<fqdn>/
 ```
 
-### Test the health endpoint
+If your app exposes a `/health` endpoint, test that too:
 
 ```bash
 curl https://<fqdn>/health
 ```
 
-### Expected results
+### What to confirm
 
-- HTTP 200 response.
-- JSON payload from `/`.
-- Health response from `/health`.
-- New revision visible in Azure after deployment.
+- HTTP response is 200
+- Response body matches the deployed version
+- The latest Git SHA or build version is visible if your app reports it
 
 ---
 
-## Monitoring
+## How the Deployer Monitors the App
 
-Azure Container Apps supports revision inspection, live logs, and platform metrics. Azure’s Container Apps deployment guidance also ties GitHub Actions deployments to revision updates, so revision state is one of the first places to check after a rollout. [web:1]
+### Portal monitoring
 
-### Useful commands
+1. Open the Container App.
+2. Go to **Revisions and replicas**.
+3. Confirm the newest revision is active.
+4. Go to **Log stream** to see live logs.
+5. Go to **Metrics** to inspect request count, CPU, memory, and failures.
+
+### CLI monitoring
 
 ```bash
-az containerapp logs show \
-  --name sampleappdev \
-  --resource-group RG-SAMPLE-DEV
+az containerapp logs show -n sampleappdev -g RG-SAMPLE-DEV
+az containerapp revision list -n sampleappdev -g RG-SAMPLE-DEV -o table
 ```
 
-```bash
-az containerapp revision list \
-  --name sampleappdev \
-  --resource-group RG-SAMPLE-DEV \
-  -o table
-```
+### Log Analytics
 
-### What to monitor
-
-- Active revision status.
-- Application startup logs.
-- Image pull errors.
-- Request count, failures, CPU, and memory.
-- Log Analytics records from the Container Apps environment.
+Azure Container Apps sends application and system logs to Log Analytics. Use the workspace linked to the environment to query system and console logs, especially when diagnosing failed revisions.
 
 ---
 
-## Troubleshooting
+## Troubleshooting Lessons
 
-### Azure login fails
+### Unauthorized image push
 
-Common causes:
-- Wrong client, tenant, or subscription values.
-- Missing `id-token: write` permission for OIDC.
-- Missing or malformed `AZURE_CREDENTIALS` JSON when using secret-based auth. [web:2][web:14]
+Earlier failures showed the image push step could fail with insufficient scopes. That was a build and push identity issue, not a runtime `AcrPush` requirement for the app itself.
 
-### Image build fails
+### Image pull failure
 
-Common causes:
-- Dockerfile issues.
-- Missing application files.
-- Invalid Python dependencies.
-- Incorrect ACR name in `az acr build`.
+The common runtime problem was missing `AcrPull` on the Container Apps environment identity.
 
-### Container App cannot pull image
+### Secret problems
 
-This is usually an identity or RBAC problem. Make sure the identity used by the Container App has `AcrPull` on the target registry. [web:15]
+A wrong or missing `AZURE_CREDENTIALS` secret prevents Azure login.
 
-### New revision does not become healthy
+### Revision failures
 
-Check:
-- Container logs.
-- Port binding, confirm the app listens on `0.0.0.0:8080`.
-- Startup command.
-- Health endpoint behavior.
-- Revision details in the Azure portal.
+If a revision fails, check revision details, system logs, and log stream to find the failing container message.
 
-### RBAC changes do not work immediately
+### RBAC propagation
 
-Role assignment propagation can take a short time. Retry after a few minutes if `AcrPull` was assigned very recently.
+After role assignment, wait a few minutes before retrying because Azure RBAC may not be immediate.
 
 ---
 
-## Security Notes
+## Final Checklist
 
-For public repositories, avoid committing tenant IDs, subscription IDs, app IDs, or registry names unless they are intentionally public examples. Prefer placeholders in documentation and keep real values in GitHub Secrets or environment-specific deployment configuration. [web:2][web:14]
-
-Prefer **OIDC** over client secrets for GitHub-to-Azure authentication. This reduces secret management risk and aligns with GitHub and Azure guidance for modern deployment workflows. [web:2][web:14]
-
-Do not enable the ACR admin user unless you have a specific operational need. Managed identity with `AcrPull` is the cleaner runtime pattern for Container Apps consuming private images. [web:15]
-
----
-
-## Checklist
-
-Use this checklist before declaring the deployment complete:
-
-- [ ] Python app runs locally on port `8080`
-- [ ] Docker image builds successfully
-- [ ] Git repository is initialized
-- [ ] Code is pushed to GitHub
-- [ ] GitHub Actions workflow exists under `.github/workflows/`
-- [ ] Azure authentication is configured
-- [ ] OIDC or service principal permissions are valid
-- [ ] Azure Container Registry exists
-- [ ] Azure Container Apps environment exists
-- [ ] Container App exists and ingress is configured
-- [ ] Managed identity is enabled
-- [ ] `AcrPull` is assigned on ACR
-- [ ] Workflow run succeeds
-- [ ] New revision becomes active
-- [ ] App URL returns expected response
-- [ ] Logs and revisions are visible for monitoring
-
----
-
-## References
-
-- Azure Container Apps with GitHub Actions: [Microsoft Learn](https://learn.microsoft.com/en-us/azure/container-apps/github-actions)
-- GitHub OIDC for Azure: [GitHub Docs](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-azure)
-- Azure Login Action: [GitHub Action](https://github.com/Azure/login/)
+- Python app runs locally
+- Dockerfile builds
+- Git repo initialized
+- Code pushed to GitHub `main`
+- GitHub secret `AZURE_CREDENTIALS` created
+- Entra app registration created
+- Client secret value copied
+- Subscription ID copied
+- Container Apps environment created
+- `AcrPull` assigned to environment identity
+- Workflow file committed
+- GitHub Actions run succeeds
+- Deployed app URL returns expected response
+- Logs and revisions are monitored after deployment
