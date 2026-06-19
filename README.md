@@ -142,9 +142,7 @@ This section keeps the frontend Azure Portal steps as part of the procedure so t
 #### CLI alternative
 
 ```bash
-az group create \
-  --name RG-SAMPLE-DEV \
-  --location uae north
+az group create   --name RG-SAMPLE-DEV   --location uae north
 ```
 
 ---
@@ -163,10 +161,7 @@ az group create \
 #### CLI alternative
 
 ```bash
-az acr create \
-  --resource-group RG-SAMPLE-DEV \
-  --name sampledevacr \
-  --sku Standard
+az acr create   --resource-group RG-SAMPLE-DEV   --name sampledevacr   --sku Standard
 ```
 
 ---
@@ -185,10 +180,7 @@ az acr create \
 #### CLI alternative
 
 ```bash
-az containerapp env create \
-  --name sampleapp-env \
-  --resource-group RG-SAMPLE-DEV \
-  --location uae north
+az containerapp env create   --name sampleapp-env   --resource-group RG-SAMPLE-DEV   --location uae north
 ```
 
 ---
@@ -206,13 +198,7 @@ az containerapp env create \
 #### CLI alternative
 
 ```bash
-az containerapp create \
-  --name sampleappdev \
-  --resource-group RG-SAMPLE-DEV \
-  --environment sampleapp-env \
-  --image mcr.microsoft.com/azuredocs/containerapps-helloworld:latest \
-  --target-port 8080 \
-  --ingress external
+az containerapp create   --name sampleappdev   --resource-group RG-SAMPLE-DEV   --environment sampleapp-env   --image mcr.microsoft.com/azuredocs/containerapps-helloworld:latest   --target-port 8080   --ingress external
 ```
 
 ---
@@ -236,7 +222,7 @@ On the app Overview page:
 From Azure CLI:
 
 ```bash
-az ad app list --display-name sampleappdev-github-actions --query ".appId" -o tsv
+az ad app list --display-name sampleappdev-github-actions --query "[0].appId" -o tsv
 az account show --query tenantId -o tsv
 az account show --query id -o tsv
 ```
@@ -253,10 +239,7 @@ az account show --query id -o tsv
 ### CLI alternative
 
 ```bash
-az ad sp create-for-rbac \
-  --name sampleappdev-github-actions \
-  --role Contributor \
-  --scopes /subscriptions/<subscription-id>/resourceGroups/RG-SAMPLE-DEV
+az ad sp create-for-rbac   --name sampleappdev-github-actions   --role Contributor   --scopes /subscriptions/<subscription-id>/resourceGroups/RG-SAMPLE-DEV
 ```
 
 ---
@@ -328,20 +311,13 @@ For this pipeline, `AcrPush` is not required for runtime deployment. The workflo
 ENV_PRINCIPAL_ID=$(az containerapp env show -n sampleapp-env -g RG-SAMPLE-DEV --query identity.principalId -o tsv)
 ACR_ID=$(az acr show -n sampledevacr --query id -o tsv)
 
-az role assignment create \
-  --assignee "$ENV_PRINCIPAL_ID" \
-  --scope "$ACR_ID" \
-  --role AcrPull
+az role assignment create   --assignee "$ENV_PRINCIPAL_ID"   --scope "$ACR_ID"   --role AcrPull
 ```
 
 ### Verify it
 
 ```bash
-az role assignment list \
-  --assignee "$ENV_PRINCIPAL_ID" \
-  --scope "$ACR_ID" \
-  --role AcrPull \
-  -o table
+az role assignment list   --assignee "$ENV_PRINCIPAL_ID"   --scope "$ACR_ID"   --role AcrPull   -o table
 ```
 
 ---
@@ -379,19 +355,11 @@ jobs:
 
       - name: Build and Push Image to ACR
         run: |
-          az acr build \
-            --registry sampledevacr \
-            --image sampleappdev:${{ github.sha }} \
-            .
+          az acr build             --registry sampledevacr             --image sampleappdev:${{ github.sha }}             .
 
       - name: Deploy to Azure Container App
         run: |
-          az containerapp update \
-            --name sampleappdev \
-            --resource-group RG-SAMPLE-DEV \
-            --container-name sampleappcontainer \
-            --image sampledevacr.azurecr.io/sampleappdev:${{ github.sha }} \
-            --no-wait
+          az containerapp update             --name sampleappdev             --resource-group RG-SAMPLE-DEV             --container-name sampleappcontainer             --image sampledevacr.azurecr.io/sampleappdev:${{ github.sha }}             --no-wait
 ```
 
 ---
