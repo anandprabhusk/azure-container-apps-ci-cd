@@ -135,7 +135,7 @@ On the app Overview page:
   "tenantId": "YOUR_TENANT_ID"
 }
 ```
-### Step 6: Create workflow file in GitHub (optional if handled in the code)
+### Step 7: Create workflow file in GitHub (optional if handled in the code)
 You can create the workflow file from your local repository or directly in GitHub.
 1. Open the repository in GitHub.
 2. Go to the **Actions** tab, or open the `.github/workflows/` folder from the repository view.
@@ -143,7 +143,7 @@ You can create the workflow file from your local repository or directly in GitHu
 4. Paste the workflow content from this guide.
 5. Commit the file to the `main` branch, or create it locally and push it through Git.
 
-### Step 7: AcrPull Role Assignment
+### Step 8: AcrPull Role Assignment
 
 ### Why not AcrPush?
 
@@ -160,7 +160,7 @@ For this pipeline, `AcrPush` is not required for runtime deployment. The workflo
 7. Select the Container Apps environment identity for `sampleapp-env`.
 8. Click **Review + assign**.
 
-### Step 8 : Deployment 
+### Step 9 : Deployment 
 
 ### 1) Initialize Git
 
@@ -199,7 +199,7 @@ git push -u origin feature/change-1
 
 ---
 
-### Step 9: Monitoring Deployment
+### Step 10: Monitoring Deployment
 
 ### In GitHub Actions
 
@@ -228,7 +228,7 @@ Use the logs to identify whether the failure is:
 
 ---
 
-### Step 10: Validate the Deployed App
+### Step 11: Validate the Deployed App
 
 Validation should confirm both that the app is live and that it returns the expected response.
 
