@@ -199,7 +199,7 @@ git push -u origin feature/change-1
 
 ---
 
-### Step 8: Monitoring Deployment
+### Step 9: Monitoring Deployment
 
 ### In GitHub Actions
 
@@ -228,7 +228,7 @@ Use the logs to identify whether the failure is:
 
 ---
 
-### Step 8: Validate the Deployed App
+### Step 10: Validate the Deployed App
 
 Validation should confirm both that the app is live and that it returns the expected response.
 
